@@ -1,4 +1,8 @@
-import os
+import subprocess, sys
+
+subprocess.check_call([sys.executable, "-m", "pip", "install", "PyMuPDF", "Pillow"])
+
+import os, fitz
 from PIL import Image, ExifTags  # pip install Pillow
 
 # Ruta de la carpeta donde están las imágenes
