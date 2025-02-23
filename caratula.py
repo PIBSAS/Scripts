@@ -1,6 +1,9 @@
-import fitz  # pip install PyMuPDF
-import os
-Materia='Java'
+import os, subprocess, sys
+
+subprocess.check_call([sys.executable, "-m", "pip", "install", "PyMuPDF"])
+
+import fitz
+
 def extraer_caratulas(directorio, salida):
     """
     Extrae las carátulas (primera página) de todos los archivos PDF en un directorio.
