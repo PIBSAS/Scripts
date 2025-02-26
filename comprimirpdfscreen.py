@@ -4,11 +4,19 @@
    Ghostscript web: https://www.ghostscript.com/
 """
 
-import subprocess, sys
+import os, subprocess, sys
 
-subprocess.check_call([sys.executable, "-m", "pip", "install", "ghostscript"])
+def is_dependencies_installed():
+    try:
+        subprocess.check_output([sys.executable, "-m", "pip", "show", "ghostscript"])
+        return True
+    except subprocess.CalledProcessError:
+        return False
 
-import os, ghostscript
+if not is_dependencies_installed():
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "ghostscript"])
+
+import ghostscript
 
 def repair_pdf(input_pdf, output_pdf):
     """
