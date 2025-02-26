@@ -3,10 +3,18 @@
    los requerimientos se instalan al ejecutarse, pero aun requiere crear entorno virtual.
    El script preguntara por la locacion de .lcpdf y la contraseña que sera el correo de archive org o de donde se adquirio
 """
-import subprocess
-import sys
+import os, subprocess, sys
 
-subprocess.check_call([sys.executable, "-m", "pip", "install", "pycryptodome"])
+def is_dependencies_installed():
+    try:
+        subprocess.check_output([sys.executable, "-m", "pip", "show", "pycryptodome"])
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+if not is_dependencies_installed():
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "pycryptodome"])
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
