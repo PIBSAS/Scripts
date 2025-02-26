@@ -1,6 +1,14 @@
 import os, subprocess, sys
 
-subprocess.check_call([sys.executable, "-m", "pip", "install", "PyMuPDF"])
+def is_dependencies_installed():
+    try:
+        subprocess.check_output([sys.executable, "-m", "pip", "show", "PyMuPDF"])
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+if not is_dependencies_installed():
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "PyMuPDF"])
 
 import fitz
 
