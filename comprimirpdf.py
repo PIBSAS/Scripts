@@ -3,9 +3,18 @@
    qpdf web: https://qpdf.sourceforge.io/
    Ghostscript web: https://www.ghostscript.com/
 """
-import subprocess, sys
 
-subprocess.check_call([sys.executable, "-m", "pip", "install", "ghostscript"])
+import os, subprocess, sys
+
+def is_dependencies_installed():
+    try:
+        subprocess.check_output([sys.executable, "-m", "pip", "show", "ghostscript"])
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+if not is_dependencies_installed():
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "ghostscript"])
 
 
 import os, ghostscript
