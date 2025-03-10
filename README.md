@@ -4,7 +4,7 @@
 - Crear PDF asegurandose que el dato exif no altere la orientación, siendo siempre vertical. Requiere Entorno Virtual Python y Pillow.  Poner en carpeta donde se encuentran las imagenes previamente numeradas.
 - Obtener Primer Hoja de PDF en Imagen. Util Para caratulas. Requiere Entorno virtual Python y ```pip install PyMuPDF```. Poner en carpeta donde se encuentra el PDF o los PDF.
 
-## UV Pacckage Manager
+## UV Package Manager
 - **Requiere:**
    - **Windows:** ``winget install uv -s winget``
    - **Linux:** ``curl -LsSf https://astral.sh/uv/install.sh | sh``
