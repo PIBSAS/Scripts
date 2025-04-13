@@ -1,6 +1,9 @@
 import os
 import subprocess
 import sys
+import socket
+import webbrowser
+from threading import Timer
 
 def is_dependencies_installed():
     try:
@@ -26,7 +29,8 @@ if not is_flask_installed():
 
 import fitz
 from PIL import Image
-from flask import Flask, render_template_string, send_from_directory
+from flask import Flask, render_template_string, send_from_directory, jsonify, Response, send_file
+import json
 import mimetypes
 mimetypes.add_type('image/webp', '.webp')
 
@@ -46,10 +50,10 @@ def extraer_caratulas_y_redimensionar(directorio, salida, ancho_deseado, alto_de
         if archivo.lower().endswith('.pdf'):
             ruta_pdf = os.path.join(directorio, archivo)
             base = os.path.splitext(archivo)[0]
-            ruta_salida_png = os.path.join(salida, base + '.png')
             ruta_salida_webp = os.path.join(salida, base + '.webp')            
-             # Si ya existe la carátula, se omite
-            if os.path.exists(ruta_salida_webp) and os.path.exists(ruta_salida_png):
+            
+            # Si ya existe la carátula, se omite
+            if os.path.exists(ruta_salida_webp):
                 print(f"Ya existe: {archivo}, se omite.")
                 continue
             
@@ -57,15 +61,14 @@ def extraer_caratulas_y_redimensionar(directorio, salida, ancho_deseado, alto_de
                 doc = fitz.open(ruta_pdf)
                 pagina = doc[0]
                 pix = pagina.get_pixmap(matrix=fitz.Matrix(300/72, 300/72))
-                pix.save(ruta_salida_png)
                 
                 # Redimensionar la imagen usando Pillow
-                imagen_pil = Image.open(ruta_salida_png)
+                #imagen_pil = Image.open(ruta_salida_png)
+                imagen_pil = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
                 imagen_redimensionada = imagen_pil.resize((ancho_deseado, alto_deseado), Image.LANCZOS)
-                imagen_redimensionada.save(ruta_salida_png)
                 imagen_redimensionada.save(ruta_salida_webp, "WEBP", quality=80, lossless=True)
                 
-                print(f"Carátulas extraídas y redimensionadas: {base}.png y {base}.webp")
+                print(f"Carátula extraída y redimensionada: {base}.webp")
                 doc.close()
                 
             except Exception as e:
@@ -81,44 +84,50 @@ app = Flask(__name__)
 
 # Directorio donde están los PDFs y las carátulas (png)
 BASE_DIRECTORY = os.getcwd()  # Usamos el directorio actual
+BASE_PATH = f'/{os.path.basename(BASE_DIRECTORY)}'
 
-@app.route('/favicon.ico')
+@app.route(f'{BASE_PATH}/favicon.ico')
 def favicon():
     return send_from_directory(BASE_DIRECTORY, 'favicon.ico')
 
 # Ruta para generar el HTML dinámicamente
-@app.route('/')
+@app.route(f'{BASE_PATH}/')
 def serve_index():
     # Obtener lista de archivos PDF en el directorio actual
     pdf_files = sorted([f for f in os.listdir(BASE_DIRECTORY) if f.endswith('.pdf')])
     # Generar HTML dinámicamente
-    html_content = generate_html(pdf_files)
+    html_content = generate_html(pdf_files, BASE_PATH)
 
     # Renderizar el HTML generado desde una cadena
     return render_template_string(html_content)
 
-# Ruta para servir archivos PDF
-@app.route('/pdfs/<filename>')
-def serve_pdf(filename):
-    return send_from_directory(BASE_DIRECTORY, filename)
-
 # Ruta para servir las carátulas (WEBP) de los PDFs
-@app.route('/<filename>')
+@app.route(f'{BASE_PATH}/<filename>')
 def serve_cover(filename):
     return send_from_directory(BASE_DIRECTORY, filename)
 
-# Función para generar el HTML
-def generate_html(pdf_files):
-    pdf_list = ',\n            '.join([f'"{pdf}"' for pdf in pdf_files])  # Crear lista de PDFs en formato JavaScript
+@app.route(f'{BASE_PATH}/site.webmanifest')
+def serve_manifest():
+    return send_file(os.path.join(BASE_DIRECTORY, 'site.webmanifest'), mimetype='application/manifest+json')
 
+@app.route(f'{BASE_PATH}/service-worker.js')
+def serve_sw():
+    return send_from_directory(BASE_DIRECTORY, 'service-worker.js', mimetype='application/javascript')
+
+# Función para generar el HTML
+def generate_html(pdf_files, base_path):
+    pdf_list = ',\n            '.join([f'"{pdf}"' for pdf in pdf_files])  # Crear lista de PDFs en formato JavaScript
+    folder_name = os.path.basename(os.getcwd())
     html_content = f"""
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>(Hello world)</title>
-    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <title>{folder_name}</title>
+    <link rel="icon" type="image/x-icon" href="{base_path}/favicon.ico">
+    <link rel="manifest" href="{base_path}/site.webmanifest">
+    <script src="{base_path}/service-worker.js"></script>
     <style>
         body {{
             font-family: Arial, sans-serif;
@@ -178,10 +187,21 @@ def generate_html(pdf_files):
             }}
         }}
     </style>
+    <script>
+    if ('serviceWorker' in navigator) {{
+      window.addEventListener('load', function() {{
+        navigator.serviceWorker.register("{base_path}/service-worker.js").then(function(registration) {{
+          console.log('ServiceWorker registration successful with scope: ', registration.scope);
+        }}, function(err) {{
+          console.log('ServiceWorker registration failed: ', err);
+        }});
+      }});
+    }}
+  </script>
 </head>
 <body>
     <div id="logo">
-        <img src="/logo.webp" alt="Logo" style="max-width: 200px; height: auto;">
+        <img src="{base_path}/logo.webp" alt="Logo" style="max-width: 200px; height: auto;">
     </div>
     <div id="pdfs-container"></div>
     
@@ -194,7 +214,7 @@ def generate_html(pdf_files):
 
         pdfFiles.forEach(pdfFile => {{
             const img = document.createElement('img');
-            img.src = '/' + pdfFile.replace('.pdf', '.webp');
+            img.src = '{base_path}/' + pdfFile.replace('.pdf', '.webp');
 
             img.classList.add('pdf-thumbnail');
             
@@ -203,7 +223,7 @@ def generate_html(pdf_files):
             img.title = fileName;
 
             img.onclick = function() {{
-                window.open('/pdfs/' + pdfFile, '_blank');
+                window.open('{base_path}/' + pdfFile, '_blank');
             }};
 
             const div = document.createElement('div');
@@ -223,7 +243,27 @@ def generate_html(pdf_files):
     """
     return html_content
 
+def obtener_ip_local():
+    # Obtener la IP local
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.settimeout(0)
+    try:
+        # Conectar a una dirección externa para obtener la IP local
+        s.connect(('10.254.254.254', 1))  # No importa la IP de destino
+        ip = s.getsockname()[0]
+    except Exception:
+        ip = '127.0.0.1'  # Fallback en caso de no poder obtenerla
+    finally:
+        s.close()
+    return ip
+
+def open_browser():
+    ip_local = obtener_ip_local()
+    url = f"http://{ip_local}:80{BASE_PATH}/"
+    webbrowser.open_new(url)
+
 if __name__ == '__main__':
     extraer_caratulas_y_redimensionar(directorio_pdf, directorio_salida, ancho_deseado, alto_deseado)
+    Timer(1, open_browser).start()
     # Ejecutar Flask en el puerto 80
-    app.run(debug=True, host='0.0.0.0', port=80, use_reloader=False)
+    app.run(debug=False, host='0.0.0.0', port=80, use_reloader=False)
