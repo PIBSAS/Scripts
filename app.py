@@ -1,6 +1,17 @@
 import os
 import subprocess
 import sys
+
+def is_dependencies_installed():
+    try:
+        subprocess.check_output([sys.executable, "-m", "pip", "show", "PyMuPDF", "Pillow"])
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+if not is_dependencies_installed():
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "PyMuPDF", "Pillow"])
+
 # Comprobar si Flask está instalado
 def is_flask_installed():
     try:
@@ -13,9 +24,58 @@ def is_flask_installed():
 if not is_flask_installed():
     subprocess.check_call([sys.executable, "-m", "pip", "install", "flask"])
 
-#subprocess.check_call([sys.executable, "-m", "pip", "install", "flask"])
-
+import fitz
+from PIL import Image
 from flask import Flask, render_template_string, send_from_directory
+import mimetypes
+mimetypes.add_type('image/webp', '.webp')
+
+def extraer_caratulas_y_redimensionar(directorio, salida, ancho_deseado, alto_deseado):
+    """
+    Extrae las carátulas de los PDFs y las redimensiona a un tamaño fijo.
+    
+    :param directorio: Ruta al directorio con los PDFs.
+    :param salida: Ruta al directorio de salida para las carátulas.
+    :param ancho_deseado: Ancho deseado en píxeles.
+    :param alto_deseado: Alto deseado en píxeles.
+    """
+    if not os.path.exists(salida):
+        os.makedirs(salida)
+
+    for archivo in os.listdir(directorio):
+        if archivo.lower().endswith('.pdf'):
+            ruta_pdf = os.path.join(directorio, archivo)
+            base = os.path.splitext(archivo)[0]
+            ruta_salida_png = os.path.join(salida, base + '.png')
+            ruta_salida_webp = os.path.join(salida, base + '.webp')            
+             # Si ya existe la carátula, se omite
+            if os.path.exists(ruta_salida_webp) and os.path.exists(ruta_salida_png):
+                print(f"Ya existe: {archivo}, se omite.")
+                continue
+            
+            try:
+                doc = fitz.open(ruta_pdf)
+                pagina = doc[0]
+                pix = pagina.get_pixmap(matrix=fitz.Matrix(300/72, 300/72))
+                pix.save(ruta_salida_png)
+                
+                # Redimensionar la imagen usando Pillow
+                imagen_pil = Image.open(ruta_salida_png)
+                imagen_redimensionada = imagen_pil.resize((ancho_deseado, alto_deseado), Image.LANCZOS)
+                imagen_redimensionada.save(ruta_salida_png)
+                imagen_redimensionada.save(ruta_salida_webp, "WEBP", quality=80, lossless=True)
+                
+                print(f"Carátulas extraídas y redimensionadas: {base}.png y {base}.webp")
+                doc.close()
+                
+            except Exception as e:
+                print(f"Error procesando {archivo}: {e}")
+
+# Configurar directorio y dimensiones
+directorio_pdf = "./"  # Cambia por tu directorio con PDFs
+directorio_salida = "./"  # Cambia por tu directorio de salida
+ancho_deseado = 332  # Ancho deseado en píxeles
+alto_deseado = 443  # Alto deseado en píxeles
 
 app = Flask(__name__)
 
@@ -30,7 +90,6 @@ def favicon():
 @app.route('/')
 def serve_index():
     # Obtener lista de archivos PDF en el directorio actual
-    #pdf_files = [f for f in os.listdir(BASE_DIRECTORY) if f.endswith('.pdf')]
     pdf_files = sorted([f for f in os.listdir(BASE_DIRECTORY) if f.endswith('.pdf')])
     # Generar HTML dinámicamente
     html_content = generate_html(pdf_files)
@@ -43,7 +102,7 @@ def serve_index():
 def serve_pdf(filename):
     return send_from_directory(BASE_DIRECTORY, filename)
 
-# Ruta para servir las carátulas (PNG) de los PDFs
+# Ruta para servir las carátulas (WEBP) de los PDFs
 @app.route('/<filename>')
 def serve_cover(filename):
     return send_from_directory(BASE_DIRECTORY, filename)
@@ -58,7 +117,7 @@ def generate_html(pdf_files):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Visor PDF</title>
+    <title>(Hello world)</title>
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <style>
         body {{
@@ -89,7 +148,8 @@ def generate_html(pdf_files):
             box-sizing: border-box;
         }}
         .pdf-thumbnail {{
-            width: 80%;
+            width: 332px;
+            height: 443px;
             margin-top: 10px;
             box-sizing: border-box;
             object-fit: contain;
@@ -105,11 +165,13 @@ def generate_html(pdf_files):
             margin-bottom: 10px;
             box-sizing: border-box;
         }}
+        
         @media (max-width: 768px) {{
             #pdfs-container {{
                 grid-template-columns: 1fr 1fr;
             }}
         }}
+        
         @media (max-width: 480px) {{
             #pdfs-container {{
                 grid-template-columns: 1fr;
@@ -119,7 +181,7 @@ def generate_html(pdf_files):
 </head>
 <body>
     <div id="logo">
-        <img src="/logo.png" alt="Logo" style="max-width: 200px; height: auto;">
+        <img src="/logo.webp" alt="Logo" style="max-width: 200px; height: auto;">
     </div>
     <div id="pdfs-container"></div>
     
@@ -132,23 +194,25 @@ def generate_html(pdf_files):
 
         pdfFiles.forEach(pdfFile => {{
             const img = document.createElement('img');
-            // Usamos la ruta correcta para las carátulas
-            img.src = '/' + pdfFile.replace('.pdf', '.png');  // Ruta raíz para acceder directamente
+            img.src = '/' + pdfFile.replace('.pdf', '.webp');
 
             img.classList.add('pdf-thumbnail');
+            
+            const fileName = pdfFile.replace('.pdf', '');
+            img.alt = 'Miniatura de ' + fileName;
+            img.title = fileName;
 
-            // Al hacer clic en la carátula, se abrirá el PDF en el navegador
             img.onclick = function() {{
                 window.open('/pdfs/' + pdfFile, '_blank');
             }};
 
             const div = document.createElement('div');
+            div.classList.add('pdf-container');
             div.appendChild(img);
             
-            // Crear y añadir el subtitulo con el nombre del archivo PDF
             const subtitle = document.createElement('p');
             subtitle.classList.add('pdf-title');
-            subtitle.textContent = pdfFile.replace('.pdf', ''); //Nopmbre sin la extensión
+            subtitle.textContent = pdfFile.replace('.pdf', '');
             div.appendChild(subtitle);
             
             container.appendChild(div);
@@ -160,5 +224,6 @@ def generate_html(pdf_files):
     return html_content
 
 if __name__ == '__main__':
+    extraer_caratulas_y_redimensionar(directorio_pdf, directorio_salida, ancho_deseado, alto_deseado)
     # Ejecutar Flask en el puerto 80
-    app.run(debug=True, host='0.0.0.0', port=80)
+    app.run(debug=True, host='0.0.0.0', port=80, use_reloader=False)
