@@ -259,7 +259,7 @@ def obtener_ip_local():
 
 def open_browser():
     ip_local = obtener_ip_local()
-    url = f"http://{ip_local}:80{BASE_PATH}/"
+    url = f"http://{ip_local}{BASE_PATH}/"
     webbrowser.open_new(url)
 
 if __name__ == '__main__':
